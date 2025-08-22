@@ -23,7 +23,9 @@ import { CookieJar } from 'tough-cookie';
 const endpoint = 'https://littleskin.cn/';
 
 const credentials = JSON.parse(process.env.CREDENTIALS);
-const headers = (await import('./headers.json', { assert: { type: 'json' } })).default;
+
+import { readFile } from 'fs/promises';
+const headers = JSON.parse(await readFile(new URL('./headers.json', import.meta.url)));
 
 function sleep(t) {
 	return new Promise((resolve, reject) => {
