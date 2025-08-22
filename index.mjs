@@ -1,67 +1,87 @@
+/*  LittleSkin-AutoSign: Automatic daily sign for littleskin.cn 
+    Copyright (C) 2023 方而静
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License along
+    with this program; if not, write to the Free Software Foundation, Inc.,
+    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+    */
+
 import axios from 'axios';
 import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
-import { readFile } from 'fs/promises';
 
-const endpoint = 'https://littleskin.cn';
+const endpoint = 'https://littleskin.cn/';
+
 const credentials = JSON.parse(process.env.CREDENTIALS);
-const headers = JSON.parse(
-  await readFile(new URL('./headers.json', import.meta.url))
-);
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+import { readFile } from 'fs/promises';
+const headers = JSON.parse(await readFile(new URL('./headers.json', import.meta.url)));
 
-function extractCsrf(page) {
-  const m = page.match(/<meta\\s+name="csrf-token"\\s+content="([^"]+)"/i);
-  if (!m) throw new Error('CSRF token not found');
-  return m[1];
+function sleep(t) {
+	return new Promise((resolve, reject) => {
+		setTimeout(() => { resolve(); }, t);
+	});
+}
+
+function extract_csrf(page) {
+	return /<meta name="csrf-token" content="(\w+)">/.exec(page)[1];
 }
 
 async function task() {
-  const jar = new CookieJar();
-  const client = wrapper(
-    axios.create({ jar, withCredentials: true, baseURL: endpoint, headers })
-  );
-
-  // 1. 登录页
-  const loginPage = await client.get('auth/login');
-  let csrf = extractCsrf(loginPage.data);
-  await sleep(1200);
-
-  // 2. 登录
-  await client.post(
-    'auth/login',
-    { identification: credentials.handle, password: credentials.password, keep: false },
-    { headers: { 'X-CSRF-TOKEN': csrf } }
-  );
-  await sleep(1200);
-
-  // 3. 取 CSRF
-  const userPage = await client.get('user');
-  csrf = extractCsrf(userPage.data);
-  await sleep(1200);
-
-  // 4. 签到
-  const { data } = await client.post('user/sign', null, {
-    headers: { 'X-CSRF-TOKEN': csrf },
-  });
-
-  // 结果提示
-  if (data.code === 0) console.log('签到成功 ✅');
-  else if (data.code === 1) console.log('今日已签，跳过 ⚠️');
-  else console.log('未知返回：', JSON.stringify(data));
+	const cookie_jar = new CookieJar();
+	const req = wrapper(axios.create({
+		jar: cookie_jar,
+		withCredentials: true,
+		baseURL: endpoint,
+		headers,
+	}));
+	let home_page = await req.get('auth/login');
+	let csrf = extract_csrf(home_page.data);
+	await sleep(500);
+	await req.post('auth/login', {
+		identification: credentials.handle,
+		keep: false,
+		password: credentials.password,
+	}, {
+		headers: { 'X-CSRF-TOKEN': csrf }
+	});
+	await sleep(200);
+	csrf = extract_csrf((await req.get('user')).data);
+	await sleep(500);
+	let res = await req.post('user/sign', null, {
+		headers: { 'X-CSRF-TOKEN': csrf }
+	});
+	console.log(res.data);
 }
 
-// 最多重试 3 次
-(async () => {
-  for (let i = 0; i < 3; i++) {
-    try {
-      await task();
-      break;
-    } catch (err) {
-      console.error(`第 ${i + 1} 次尝试失败`, err.message || err);
-      if (i === 2) throw err;
-      await sleep(2000);
-    }
-  }
-})().catch(() => process.exit(1));
+async function main() {
+	const max_retry = 3;
+	for (let i = 0; i < max_retry; ++i) {
+		try {
+			await task();
+			break;
+		} catch(err) {
+			console.error(`Attempt ${i + 1} failed.`);
+			if (i < max_retry - 1) {
+				await sleep(10000); // 10 seconds
+			} else {
+				throw err;
+			}
+		}
+	}
+}
+
+main().catch(err => {
+	console.log('Error');
+	process.exit(1);
+});
