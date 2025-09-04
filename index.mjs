@@ -65,7 +65,7 @@ async function task() {
 }
 
 async function main() {
-	const max_retry = 3;
+	const max_retry = 10;
 	for (let i = 0; i < max_retry; ++i) {
 		try {
 			await task();
@@ -73,7 +73,7 @@ async function main() {
 		} catch(err) {
 			console.error(`Attempt ${i + 1} failed.`);
 			if (i < max_retry - 1) {
-				await sleep(10000); // 10 seconds
+				await sleep(60000); // 60 seconds
 			} else {
 				throw err;
 			}
