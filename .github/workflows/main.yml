@@ -1,4 +1,4 @@
-name: Auto sign-in every 12h
+name: Auto sign-in
 
 on:
   schedule:
